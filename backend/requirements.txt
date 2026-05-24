@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+supabase
+google-genai
+python-dotenv
+pandas
+cachetools
+fastembed
