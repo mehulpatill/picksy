@@ -20,7 +20,7 @@ interface Message {
   products?: Product[];
 }
 
-const API_URL = "/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 // ── Helpers ────────────────────────────────────────
 function StarRating({ rating }: { rating: number | null }) {
@@ -145,8 +145,24 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isBooting, setIsBooting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Ping backend to wake it up
+  useEffect(() => {
+    let timer = setTimeout(() => setIsBooting(true), 1500);
+    fetch(`${API_URL}/products?page_size=1`)
+      .then(() => {
+        clearTimeout(timer);
+        setIsBooting(false);
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        setIsBooting(false);
+      });
+    return () => clearTimeout(timer);
+  }, []);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -212,6 +228,22 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
+      {/* ── Booting UI ──────────────────────────────── */}
+      {isBooting && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#0a0a0f]/80 backdrop-blur-md animate-fade-in">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-violet-500/25 mb-6 animate-pulse">
+            <svg className="w-8 h-8 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2 tracking-wide">Waking up AI Engine</h2>
+          <p className="text-sm text-gray-400 text-center max-w-xs">
+            Hugging Face free tier servers sleep after inactivity. This usually takes about <span className="text-violet-400 font-semibold">30 seconds</span>.
+          </p>
+        </div>
+      )}
+
       {/* ── Header ──────────────────────────────── */}
       <header className="flex-shrink-0 border-b border-white/[0.06] bg-[#0a0a0f]/80 backdrop-blur-xl z-10">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
@@ -236,7 +268,7 @@ export default function Home() {
                 ShopAssist AI
               </h1>
               <p className="text-[11px] text-gray-500 tracking-wide">
-                Powered by Gemini &middot; Walmart Product Data
+                Powered by Gemini &middot; Smart Product Data
               </p>
             </div>
           </div>
@@ -272,16 +304,14 @@ export default function Home() {
                   />
                 </svg>
               </div>
-              <h2 className="text-2xl font-bold tracking-tight text-gray-100 mb-2">
-                What are you looking for?
-              </h2>
-              <p className="text-sm text-gray-500 max-w-md mb-8">
-                Ask me anything about Walmart products — prices, ratings,
-                comparisons, or recommendations.
+              <h3 className="text-white font-medium mb-1 tracking-wide">Welcome to ShopAssist!</h3>
+              <p className="text-gray-400 leading-relaxed text-sm">
+                Ask me anything about products — prices, ratings,
+                features, or just say <span className="text-violet-400">"What are the best laptops?"</span>
               </p>
 
               {/* Suggestion chips */}
-              <div className="flex flex-wrap justify-center gap-2 max-w-lg">
+              <div className="flex flex-wrap justify-center gap-2 max-w-lg mt-8">
                 {SUGGESTIONS.map((s) => (
                   <button
                     key={s}
@@ -366,7 +396,7 @@ export default function Home() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about Walmart products..."
+              placeholder="Ask about products..."
               disabled={loading}
               className="flex-1 bg-transparent outline-none text-sm text-gray-100 placeholder:text-gray-600 disabled:opacity-50"
             />
@@ -392,8 +422,7 @@ export default function Home() {
             </button>
           </div>
           <p className="text-[10px] text-gray-600 text-center mt-2 tracking-wide">
-            ShopAssist AI may make mistakes. Verify product details on
-            walmart.com.
+            Prices and availability may vary. Product information is synchronized in real-time from the store.
           </p>
         </form>
       </footer>

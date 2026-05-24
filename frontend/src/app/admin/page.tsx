@@ -21,7 +21,7 @@ interface Stats {
   avg_rating: number | null;
 }
 
-const API_URL = "/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 export default function AdminPage() {
   const [products, setProducts] = useState<Product[]>([]);

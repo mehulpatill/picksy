@@ -8,9 +8,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "ShopAssist AI — Walmart Product Assistant",
+  title: "ShopAssist AI — Product Assistant",
   description:
-    "AI-powered product assistant that helps you find the best Walmart products using RAG-based retrieval and Gemini AI.",
+    "AI-powered product assistant that helps you find the best products using RAG-based retrieval and Gemini AI.",
 };
 
 export default function RootLayout({
