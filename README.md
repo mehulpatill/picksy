@@ -1,13 +1,6 @@
----
-title: ShopAssist AI
-emoji: 🛍️
-colorFrom: purple
-colorTo: pink
-sdk: docker
-app_port: 7860
----
 
-# 🛍️ ShopAssist AI: Enterprise RAG Shopping Assistant
+
+# 🛍️ Picksy: Enterprise RAG Shopping Assistant
 
 An enterprise-grade, highly optimized AI shopping assistant that uses **Retrieval-Augmented Generation (RAG)** to provide conversational, semantic search for products. Instead of keyword matching, users can ask complex questions like *"What are the best curtains under $30?"* and receive intelligent, AI-curated responses.
 

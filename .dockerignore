@@ -4,3 +4,4 @@ backend/venv
 frontend/.next
 .git
 .env
+.env.example
