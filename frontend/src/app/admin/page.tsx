@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, useCallback, FormEvent } from "react";
 import Link from "next/link";
 
 interface Product {
@@ -21,12 +21,15 @@ interface Stats {
   avg_rating: number | null;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
+const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+const API_URL = rawApiUrl.replace(/\/+$/, "");
 
 export default function AdminPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [adminKey, setAdminKey] = useState("");
+  const [adminKey, setAdminKey] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("adminKey") || "" : ""
+  );
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -35,21 +38,9 @@ export default function AdminPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Product>>({});
 
-  useEffect(() => {
-    // Try to load key from local storage on mount
-    const saved = localStorage.getItem("adminKey");
-    if (saved) setAdminKey(saved);
-  }, []);
-
-  useEffect(() => {
-    fetchProducts();
-    fetchStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
-
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/products?search=${search}&page_size=50`);
+      const res = await fetch(`${API_URL}/products?search=${encodeURIComponent(search)}&page_size=50`);
       if (res.ok) {
         const data = await res.json();
         setProducts(data.products);
@@ -57,9 +48,9 @@ export default function AdminPage() {
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [search]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/products/stats`);
       if (res.ok) {
@@ -68,7 +59,33 @@ export default function AdminPage() {
     } catch (e) {
       console.error(e);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const load = async () => {
+      try {
+        const [prodRes, statsRes] = await Promise.all([
+          fetch(`${API_URL}/products?search=${encodeURIComponent(search)}&page_size=50`),
+          fetch(`${API_URL}/products/stats`),
+        ]);
+        if (prodRes.ok && isMounted) {
+          const data = await prodRes.json();
+          setProducts(data.products);
+        }
+        if (statsRes.ok && isMounted) {
+          const data = await statsRes.json();
+          setStats(data);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    load();
+    return () => {
+      isMounted = false;
+    };
+  }, [search]);
 
   const handleSaveAdminKey = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;

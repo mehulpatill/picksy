@@ -20,7 +20,8 @@ interface Message {
   products?: Product[];
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
+const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+const API_URL = rawApiUrl.replace(/\/+$/, "");
 
 // ── Helpers ────────────────────────────────────────
 function StarRating({ rating }: { rating: number | null }) {
@@ -95,21 +96,8 @@ function ProductCard({ product }: { product: Product }) {
   );
 }
 
-function TypingIndicator() {
-  return (
-    <div className="flex items-start gap-3 animate-fade-in-up">
-      <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-xs font-bold shadow-lg shadow-violet-500/20">
-        AI
-      </div>
-      <div className="bg-white/[0.04] border border-white/[0.06] rounded-2xl rounded-tl-md px-5 py-3">
-        <div className="flex items-center gap-1.5">
-          <div className="dot-1 w-2 h-2 rounded-full bg-violet-400" />
-          <div className="dot-2 w-2 h-2 rounded-full bg-violet-400" />
-          <div className="dot-3 w-2 h-2 rounded-full bg-violet-400" />
-        </div>
-      </div>
-    </div>
-  );
+function createMessageId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function LoadingSkeleton() {
@@ -149,10 +137,10 @@ export default function Home() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Ping backend to wake it up
+  // Ping backend health
   useEffect(() => {
-    let timer = setTimeout(() => setIsBooting(true), 1500);
-    fetch(`${API_URL}/products?page_size=1`)
+    const timer = setTimeout(() => setIsBooting(true), 1500);
+    fetch(`${API_URL}/health`)
       .then(() => {
         clearTimeout(timer);
         setIsBooting(false);
@@ -176,7 +164,7 @@ export default function Home() {
     if (!query || loading) return;
 
     const userMsg: Message = {
-      id: Date.now().toString(),
+      id: createMessageId(),
       role: "user",
       content: query,
     };
@@ -197,7 +185,7 @@ export default function Home() {
       const data = await res.json();
 
       const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: createMessageId(),
         role: "assistant",
         content: data.answer,
         products: data.products,
@@ -206,7 +194,7 @@ export default function Home() {
       setMessages((prev) => [...prev, aiMsg]);
     } catch (err) {
       const errorMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: createMessageId(),
         role: "assistant",
         content:
           "Sorry, I couldn't reach the server. Please check your connection or try again later.",
@@ -237,9 +225,9 @@ export default function Home() {
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
           </div>
-          <h2 className="text-xl font-bold text-white mb-2 tracking-wide">Waking up AI Engine</h2>
+          <h2 className="text-xl font-bold text-white mb-2 tracking-wide">Connecting to Assistant</h2>
           <p className="text-sm text-gray-400 text-center max-w-xs">
-            Hugging Face free tier servers sleep after inactivity. This usually takes about <span className="text-violet-400 font-semibold">30 seconds</span>.
+            Establishing connection to the AI engine. Please wait a moment...
           </p>
         </div>
       )}
@@ -307,7 +295,7 @@ export default function Home() {
               <h3 className="text-white font-medium mb-1 tracking-wide">Welcome to ShopAssist!</h3>
               <p className="text-gray-400 leading-relaxed text-sm">
                 Ask me anything about products — prices, ratings,
-                features, or just say <span className="text-violet-400">"What are the best laptops?"</span>
+                features, or just say <span className="text-violet-400">&quot;What are the best laptops?&quot;</span>
               </p>
 
               {/* Suggestion chips */}

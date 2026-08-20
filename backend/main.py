@@ -1,6 +1,7 @@
 import os
 import re
 import hashlib
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,15 @@ from fastembed import TextEmbedding
 load_dotenv()
 
 # ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("picksy.backend")
+
+# ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -27,7 +37,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise RuntimeError("Gemini API key missing.")
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
 
@@ -43,19 +53,28 @@ query_cache: TTLCache = TTLCache(maxsize=100, ttl=600)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global embedding_model
-    print("Loading embedding model BAAI/bge-small-en-v1.5...")
+    logger.info("Loading embedding model BAAI/bge-small-en-v1.5...")
     embedding_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
-    print("✅ Embedding model loaded")
-    print("✅ App started")
+    logger.info("✅ Embedding model loaded")
+    logger.info("✅ App started")
     yield
-    print("🛑 App stopped")
+    logger.info("🛑 App stopped")
 
 app = FastAPI(title="AI Product Assistant", version="2.0.0", lifespan=lifespan)
 
+# CORS configuration
+ALLOWED_ORIGINS_RAW = os.getenv("ALLOWED_ORIGINS", "*")
+if ALLOWED_ORIGINS_RAW.strip() == "*":
+    allowed_origins = ["*"]
+    allow_credentials = False
+else:
+    allowed_origins = [orig.strip() for orig in ALLOWED_ORIGINS_RAW.split(",") if orig.strip()]
+    allow_credentials = True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=allowed_origins,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -126,7 +145,7 @@ def _verify_admin(x_admin_key: str | None):
     """Verify admin API key."""
     if not ADMIN_API_KEY:
         raise HTTPException(status_code=500, detail="ADMIN_API_KEY not configured on server")
-    if x_admin_key != ADMIN_API_KEY:
+    if not x_admin_key or x_admin_key != ADMIN_API_KEY:
         raise HTTPException(status_code=403, detail="Invalid admin key")
 
 def _build_chunk(product: dict) -> str:
@@ -188,7 +207,8 @@ async def health():
         count = res.count if hasattr(res, 'count') and res.count is not None else 0
         return {"status": "ok", "products_indexed": count}
     except Exception as e:
-        return {"status": "error", "detail": str(e)}
+        logger.error(f"Health check error: {e}")
+        return {"status": "error", "detail": "Database connection error"}
 
 @app.post("/ask", response_model=AskResponse)
 async def ask(body: AskRequest):
@@ -240,7 +260,7 @@ async def ask(body: AskRequest):
         )
         answer_text = response.text
     except Exception as e:
-        print(f"Gemini API error (fallback to pure search): {e}")
+        logger.warning(f"Gemini API error (fallback to pure search): {e}")
         answer_text = "I'm currently experiencing high traffic (Gemini API quota exceeded), but here are the best matching products I found for you from the database!"
 
     # 6. Format top 3 products
@@ -368,9 +388,9 @@ async def update_product(
         # Content changed — re-embed
         new_embedding = _embed_single(new_chunk)
         fields_to_update["embedding"] = new_embedding
-        print(f"Product {product_id}: content changed, re-embedded")
+        logger.info(f"Product {product_id}: content changed, re-embedded")
     else:
-        print(f"Product {product_id}: content unchanged, skipping re-embedding")
+        logger.info(f"Product {product_id}: content unchanged, skipping re-embedding")
 
     try:
         res = supabase.table("products").update(fields_to_update).eq("product_id", product_id).execute()
