@@ -13,10 +13,7 @@
 
 ## 🚀 Live Demo
 
-- **Web Client:** [https://pickksy.vercel.app](https://pickksy.vercel.app)
-- **Production API:** [https://picksy.softdrip.in](https://picksy.softdrip.in)
-- **API Health:** [https://picksy.softdrip.in/health](https://picksy.softdrip.in/health)
-- **Interactive Swagger Docs:** [https://picksy.softdrip.in/docs](https://picksy.softdrip.in/docs)
+- **Live Web Application:** [https://pickksy.vercel.app](https://pickksy.vercel.app)
 
 ---
 
