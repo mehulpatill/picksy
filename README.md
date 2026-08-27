@@ -88,6 +88,36 @@ picksy/
 
 ---
 
+## 💡 Example Query & Response
+
+**Request (`POST /ask`):**
+```json
+{
+  "query": "What are the best curtains under $30?"
+}
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "answer": "The best option under $30 is the Mainstays Solid Black Room Darkening Rod Pocket Curtain Panel Pair (30\" x 84\"), priced at $9.94 with a 4.4-star rating from 6,728 reviews. These curtains provide room darkening and come in pairs with durable microfiber construction.",
+  "products": [
+    {
+      "product_id": "890538965",
+      "product_name": "Mainstays Blackout Curtain Panel Pair, Set of 2, Black, 30\"W x 84\"L",
+      "brand": "Mainstays",
+      "category_name": "Shop Curtains",
+      "final_price": 9.94,
+      "rating": 4.4,
+      "review_count": 6728,
+      "available_for_delivery": true
+    }
+  ]
+}
+```
+
+---
+
 ## 💻 Local Quickstart
 
 ### 1. Backend
