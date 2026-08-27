@@ -136,17 +136,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 📄 Resume Summary
-
-- **Picksy — Full-Stack RAG AI Shopping Assistant** *(Next.js 16, React 19, FastAPI, pgvector, Docker, Supabase)*
-  - Built an end-to-end semantic product search platform using **FastAPI**, **Next.js 16**, and **Supabase (pgvector)** over 1,000+ catalog items with sub-100ms vector retrieval.
-  - Implemented local **ONNX-accelerated dense vector embeddings** (`BAAI/bge-small-en-v1.5`, 384 dims) via **FastEmbed**, eliminating external embedding API costs and network round-trips.
-  - Architected incremental data synchronization with **MD5 content hashing** and in-memory **TTLCache**, preventing redundant re-embedding computations and reducing LLM inference overhead.
-  - Developed admin catalog management with automated vector re-indexing and built-in graceful degradation for LLM query routing.
-
----
-
 ## 📜 License
 
 Distributed under the **MIT License**.
+
 
