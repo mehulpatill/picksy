@@ -4,7 +4,8 @@ An enterprise-grade, highly optimized AI shopping assistant that uses **Retrieva
 
 ## 🚀 Live Demo
 - **Frontend (Vercel):** [https://pickksy.vercel.app](https://pickksy.vercel.app)
-- **Backend (Hugging Face):** [https://huggingface.co/spaces/mehulpatill/shoppingAgent](https://huggingface.co/spaces/mehulpatill/shoppingAgent)
+- **Backend (AWS EC2 + Cloudflare):** [https://picksy.softdrip.in](https://picksy.softdrip.in)
+- **API Health Check:** [https://picksy.softdrip.in/health](https://picksy.softdrip.in/health)
 
 ---
 

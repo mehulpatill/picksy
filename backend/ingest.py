@@ -82,8 +82,13 @@ async def ingest():
     df["available_for_delivery"] = df["available_for_delivery"].astype(bool)
 
     # Convert NaNs to None for JSON compliance
-    df = df.replace({pd.NA: None, math.nan: None})
     records = df.to_dict(orient="records")
+    for r in records:
+        for k, v in list(r.items()):
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                r[k] = None
+            elif pd.isna(v):
+                r[k] = None
 
     csv_product_ids = {r["product_id"] for r in records}
     print(f"Found {len(records)} valid products in CSV.")
@@ -129,7 +134,7 @@ async def ingest():
     print(f"   Stale products to delete: {len(to_delete_ids)}")
 
     # ── INSERT new products (batched) ────────────────────────────────────
-    batch_size = 50
+    batch_size = 25
     total_inserted = 0
 
     if to_insert:
