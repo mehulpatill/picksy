@@ -1,16 +1,19 @@
 "use client";
 
 import { useState, useRef, useEffect, FormEvent } from "react";
+import Link from "next/link";
 
 // ── Types ──────────────────────────────────────────
-interface Product {
+export interface Product {
+  product_id?: string;
   product_name: string;
   brand: string | null;
   category_name: string | null;
-  final_price: string | null;
+  final_price: number | string | null;
   rating: number | null;
   review_count: number | null;
   available_for_delivery: boolean | null;
+  description?: string | null;
 }
 
 interface Message {
@@ -18,12 +21,65 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   products?: Product[];
+  timestamp: string;
+}
+
+interface BackendHealth {
+  status: string;
+  products_indexed: number;
 }
 
 const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
 const API_URL = rawApiUrl.replace(/\/+$/, "");
 
-// ── Helpers ────────────────────────────────────────
+// ── Formatters ─────────────────────────────────────
+function formatPrice(val: number | string | null | undefined): string {
+  if (val === null || val === undefined || val === "") return "N/A";
+  if (typeof val === "number") return `$${val.toFixed(2)}`;
+  const clean = String(val).replace(/[\$,]/g, "");
+  const num = parseFloat(clean);
+  return isNaN(num) ? String(val) : `$${num.toFixed(2)}`;
+}
+
+function formatMarkdownText(text: string) {
+  // Split into lines for basic markdown rendering
+  const lines = text.split("\n");
+  return lines.map((line, idx) => {
+    let formatted = line;
+
+    // Bold text **text**
+    const parts = formatted.split(/(\*\*.*?\*\*)/g);
+    const renderedLine = parts.map((part, pIdx) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return (
+          <strong key={pIdx} className="font-semibold text-violet-200">
+            {part.slice(2, -2)}
+          </strong>
+        );
+      }
+      return part;
+    });
+
+    if (line.trim().startsWith("* ") || line.trim().startsWith("- ")) {
+      return (
+        <li key={idx} className="ml-4 list-disc list-outside text-gray-200 leading-relaxed my-1">
+          {renderedLine.slice(1)}
+        </li>
+      );
+    }
+
+    if (line.trim() === "") {
+      return <div key={idx} className="h-2" />;
+    }
+
+    return (
+      <p key={idx} className="text-sm text-gray-200 leading-relaxed my-1">
+        {renderedLine}
+      </p>
+    );
+  });
+}
+
 function StarRating({ rating }: { rating: number | null }) {
   if (rating === null || rating === undefined) return null;
   const full = Math.floor(rating);
@@ -36,7 +92,7 @@ function StarRating({ rating }: { rating: number | null }) {
             <linearGradient id={`star-fill-${i}-${rating}`}>
               <stop
                 offset={`${i < full ? 100 : i === full ? partial * 100 : 0}%`}
-                stopColor="#facc15"
+                stopColor="#fbbf24"
               />
               <stop
                 offset={`${i < full ? 100 : i === full ? partial * 100 : 0}%`}
@@ -50,69 +106,200 @@ function StarRating({ rating }: { rating: number | null }) {
           />
         </svg>
       ))}
-      <span className="text-xs text-gray-400 ml-1">{rating.toFixed(1)}</span>
+      <span className="text-xs font-medium text-amber-400/90 ml-1">{rating.toFixed(1)}</span>
     </div>
   );
 }
 
-function ProductCard({ product }: { product: Product }) {
+function ProductCard({
+  product,
+  onSelect,
+}: {
+  product: Product;
+  onSelect: (p: Product) => void;
+}) {
   return (
-    <div className="product-card group relative bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 hover:border-violet-500/30 hover:bg-white/[0.05] transition-all duration-300 cursor-default">
+    <div
+      onClick={() => onSelect(product)}
+      className="product-card group relative bg-gradient-to-b from-white/[0.06] to-white/[0.02] border border-white/[0.08] hover:border-violet-500/50 hover:bg-white/[0.08] rounded-2xl p-4 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-violet-500/10 flex flex-col justify-between"
+    >
       {/* Delivery badge */}
       {product.available_for_delivery && (
-        <div className="absolute -top-2 -right-2 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded-full backdrop-blur-sm">
-          ✦ Delivery
+        <div className="absolute -top-2.5 -right-2 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-semibold tracking-wider uppercase px-2.5 py-0.5 rounded-full backdrop-blur-md shadow-sm">
+          ⚡ Delivery Available
         </div>
       )}
 
-      {/* Category pill */}
-      {product.category_name && (
-        <span className="inline-block text-[10px] tracking-widest uppercase text-violet-400/70 font-medium mb-2">
-          {product.category_name}
-        </span>
-      )}
+      <div>
+        {/* Category badge */}
+        {product.category_name && (
+          <span className="inline-block text-[10px] tracking-widest uppercase font-semibold text-violet-400/90 bg-violet-500/10 border border-violet-500/20 px-2 py-0.5 rounded-md mb-2">
+            {product.category_name}
+          </span>
+        )}
 
-      {/* Product name */}
-      <h4 className="text-sm font-semibold text-gray-100 leading-snug line-clamp-2 mb-2 group-hover:text-violet-300 transition-colors">
-        {product.product_name}
-      </h4>
+        {/* Product title */}
+        <h4 className="text-sm font-semibold text-gray-100 leading-snug line-clamp-2 mb-2 group-hover:text-violet-200 transition-colors">
+          {product.product_name}
+        </h4>
 
-      {/* Price + Rating row */}
-      <div className="flex items-center justify-between mt-auto">
-        <span className="text-lg font-bold bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
-          {product.final_price ?? "N/A"}
-        </span>
-        <StarRating rating={product.rating} />
+        {/* Short description preview */}
+        {product.description && (
+          <p className="text-xs text-gray-400 line-clamp-2 mb-3 leading-relaxed">
+            {product.description}
+          </p>
+        )}
       </div>
 
-      {/* Brand + Reviews */}
-      <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
-        <span>{product.brand ?? "Unknown brand"}</span>
-        {product.review_count !== null && (
-          <span>{product.review_count.toLocaleString()} reviews</span>
-        )}
+      <div className="pt-3 border-t border-white/[0.06] mt-2">
+        {/* Price & Rating */}
+        <div className="flex items-center justify-between">
+          <span className="text-lg font-bold bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400 bg-clip-text text-transparent">
+            {formatPrice(product.final_price)}
+          </span>
+          <StarRating rating={product.rating} />
+        </div>
+
+        {/* Brand & Reviews */}
+        <div className="flex items-center justify-between mt-2 text-[11px] text-gray-400">
+          <span className="font-medium truncate max-w-[120px]">
+            {product.brand || "Walmart Select"}
+          </span>
+          {product.review_count !== null && (
+            <span className="text-gray-500">
+              {product.review_count.toLocaleString()} reviews
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function createMessageId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+function ProductModal({
+  product,
+  onClose,
+}: {
+  product: Product | null;
+  onClose: () => void;
+}) {
+  if (!product) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
+      <div className="relative w-full max-w-xl bg-[#12121c] border border-white/[0.12] rounded-3xl p-6 sm:p-8 shadow-2xl shadow-violet-500/10 overflow-hidden animate-fade-in-up">
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-gray-400 hover:text-white flex items-center justify-center transition-all"
+        >
+          ✕
+        </button>
+
+        {/* Category & Delivery Tag */}
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          {product.category_name && (
+            <span className="text-xs font-semibold text-violet-400 bg-violet-500/15 border border-violet-500/30 px-3 py-1 rounded-full uppercase tracking-wider">
+              {product.category_name}
+            </span>
+          )}
+          {product.available_for_delivery && (
+            <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 rounded-full">
+              ⚡ Free / Fast Delivery Available
+            </span>
+          )}
+        </div>
+
+        {/* Product Title */}
+        <h3 className="text-xl font-bold text-white mb-3 leading-snug">
+          {product.product_name}
+        </h3>
+
+        {/* Price & Rating Row */}
+        <div className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.04] border border-white/[0.06] mb-5">
+          <div>
+            <div className="text-xs text-gray-400">Price</div>
+            <div className="text-2xl font-black bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
+              {formatPrice(product.final_price)}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-gray-400 mb-1">Customer Rating</div>
+            <StarRating rating={product.rating} />
+            <div className="text-[11px] text-gray-500 mt-0.5">
+              {product.review_count ? `${product.review_count.toLocaleString()} verified ratings` : "No ratings yet"}
+            </div>
+          </div>
+        </div>
+
+        {/* Brand & ID Info */}
+        <div className="grid grid-cols-2 gap-3 mb-5 text-xs text-gray-300">
+          <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+            <span className="text-gray-500 block mb-1">Brand</span>
+            <span className="font-semibold">{product.brand || "Walmart Select"}</span>
+          </div>
+          <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+            <span className="text-gray-500 block mb-1">Product ID / SKU</span>
+            <span className="font-mono text-gray-300">{product.product_id || "N/A"}</span>
+          </div>
+        </div>
+
+        {/* Description */}
+        {product.description && (
+          <div className="mb-6 max-h-48 overflow-y-auto pr-2">
+            <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              Product Overview
+            </h4>
+            <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-line">
+              {product.description}
+            </p>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          <button
+            onClick={() => {
+              alert("🛒 Added to cart! (Demo checkout)");
+              onClose();
+            }}
+            className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-semibold text-sm shadow-lg shadow-violet-500/25 transition-all active:scale-[0.98]"
+          >
+            Add to Bag &middot; {formatPrice(product.final_price)}
+          </button>
+          <button
+            onClick={onClose}
+            className="px-5 py-3 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-gray-300 text-sm font-medium transition-all"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function LoadingSkeleton() {
   return (
     <div className="flex items-start gap-3 animate-fade-in-up">
-      <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-xs font-bold shadow-lg shadow-violet-500/20">
+      <div className="flex-shrink-0 w-9 h-9 rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-xs font-bold text-white shadow-lg shadow-violet-500/20">
         AI
       </div>
       <div className="flex-1 space-y-3 max-w-2xl">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-violet-400">Picksy AI is reasoning</span>
+          <span className="inline-flex gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-violet-400 dot-1" />
+            <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 dot-2" />
+            <span className="w-1.5 h-1.5 rounded-full bg-pink-400 dot-3" />
+          </span>
+        </div>
         <div className="skeleton h-4 w-3/4 rounded-lg" />
         <div className="skeleton h-4 w-1/2 rounded-lg" />
         <div className="skeleton h-4 w-5/6 rounded-lg" />
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="skeleton h-32 rounded-2xl" />
+            <div key={i} className="skeleton h-36 rounded-2xl" />
           ))}
         </div>
       </div>
@@ -120,12 +307,22 @@ function LoadingSkeleton() {
   );
 }
 
-// ── Suggested queries ──────────────────────────────
+// ── Smart Suggestion Prompts ───────────────────────
 const SUGGESTIONS = [
-  "What are the best curtains under $30?",
-  "Show me top-rated electronics",
-  "Find products with free delivery",
-  "What are good home decor options?",
+  { label: "🪟 Best Curtains under $30", query: "What are the best curtains under $30?" },
+  { label: "💄 Top Rated Makeup", query: "Show me highly rated makeup and eye cosmetics" },
+  { label: "👗 Women's Summer Tops", query: "Comfortable women's cami and tank tops under $20" },
+  { label: "⚡ Free Delivery Deals", query: "Find top rated products with delivery available under $25" },
+];
+
+const CATEGORY_CHIPS = [
+  "Curtains",
+  "Bras & Lingerie",
+  "Tank Tops",
+  "Eye Makeup",
+  "Under $15",
+  "Under $30",
+  "Rated 4.5+ ★",
 ];
 
 // ── Main Page ──────────────────────────────────────
@@ -133,23 +330,17 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isBooting, setIsBooting] = useState(false);
+  const [health, setHealth] = useState<BackendHealth | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Ping backend health
   useEffect(() => {
-    const timer = setTimeout(() => setIsBooting(true), 1500);
     fetch(`${API_URL}/health`)
-      .then(() => {
-        clearTimeout(timer);
-        setIsBooting(false);
-      })
-      .catch(() => {
-        clearTimeout(timer);
-        setIsBooting(false);
-      });
-    return () => clearTimeout(timer);
+      .then((res) => res.json())
+      .then((data: BackendHealth) => setHealth(data))
+      .catch((err) => console.error("Health check error:", err));
   }, []);
 
   // Auto-scroll on new messages
@@ -164,9 +355,10 @@ export default function Home() {
     if (!query || loading) return;
 
     const userMsg: Message = {
-      id: createMessageId(),
+      id: `${Date.now()}-user`,
       role: "user",
       content: query,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
 
     setMessages((prev) => [...prev, userMsg]);
@@ -180,27 +372,29 @@ export default function Home() {
         body: JSON.stringify({ query }),
       });
 
-      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
 
       const data = await res.json();
 
       const aiMsg: Message = {
-        id: createMessageId(),
+        id: `${Date.now()}-ai`,
         role: "assistant",
         content: data.answer,
         products: data.products,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
 
       setMessages((prev) => [...prev, aiMsg]);
     } catch (err) {
+      console.error(err);
       const errorMsg: Message = {
-        id: createMessageId(),
+        id: `${Date.now()}-err`,
         role: "assistant",
         content:
-          "Sorry, I couldn't reach the server. Please check your connection or try again later.",
+          "Unable to connect to the backend server. Please verify your internet connection or try again shortly.",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages((prev) => [...prev, errorMsg]);
-      console.error(err);
     } finally {
       setLoading(false);
       inputRef.current?.focus();
@@ -212,103 +406,118 @@ export default function Home() {
     sendMessage();
   };
 
+  const clearChat = () => {
+    setMessages([]);
+    inputRef.current?.focus();
+  };
+
   const isEmpty = messages.length === 0 && !loading;
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      {/* ── Booting UI ──────────────────────────────── */}
-      {isBooting && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#0a0a0f]/80 backdrop-blur-md animate-fade-in">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-violet-500/25 mb-6 animate-pulse">
-            <svg className="w-8 h-8 text-white animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          </div>
-          <h2 className="text-xl font-bold text-white mb-2 tracking-wide">Connecting to Assistant</h2>
-          <p className="text-sm text-gray-400 text-center max-w-xs">
-            Establishing connection to the AI engine. Please wait a moment...
-          </p>
-        </div>
-      )}
-
+    <div className="flex flex-col h-screen overflow-hidden bg-[#0a0a0f] text-gray-100">
       {/* ── Header ──────────────────────────────── */}
-      <header className="flex-shrink-0 border-b border-white/[0.06] bg-[#0a0a0f]/80 backdrop-blur-xl z-10">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+      <header className="flex-shrink-0 border-b border-white/[0.08] bg-[#0c0c14]/90 backdrop-blur-2xl z-20 shadow-md">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-violet-500/25">
-              <svg
-                className="w-5 h-5 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
-                />
-              </svg>
+            {/* Logo Icon */}
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600 via-fuchsia-600 to-pink-500 flex items-center justify-center shadow-lg shadow-violet-500/25 ring-1 ring-white/20">
+              <span className="text-xl select-none">🛍️</span>
             </div>
+
             <div>
-              <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
-                ShopAssist AI
-              </h1>
-              <p className="text-[11px] text-gray-500 tracking-wide">
-                Powered by Gemini &middot; Smart Product Data
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-black tracking-tight bg-gradient-to-r from-violet-400 via-fuchsia-300 to-pink-400 bg-clip-text text-transparent">
+                  Picksy
+                </h1>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-violet-300 bg-violet-500/20 border border-violet-500/30 px-2 py-0.5 rounded-full">
+                  RAG 2.0
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-400 font-medium">
+                Enterprise AI Shopping Assistant &middot; FastEmbed + Gemini + Supabase
               </p>
             </div>
           </div>
-          
-          <a 
-            href="/admin" 
-            className="text-xs font-semibold text-gray-400 hover:text-violet-400 border border-white/[0.08] hover:border-violet-500/30 bg-white/[0.03] px-3 py-1.5 rounded-lg transition-all"
-          >
-            Admin Dashboard &rarr;
-          </a>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Live Database Sync Badge */}
+            <div className="hidden sm:flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/25 px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-400 shadow-sm">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span>{health ? `${health.products_indexed} Products Synced` : "EC2 Connected"}</span>
+            </div>
+
+            {/* Clear Chat Button */}
+            {messages.length > 0 && (
+              <button
+                onClick={clearChat}
+                className="text-xs font-medium text-gray-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] px-3 py-1.5 rounded-xl transition-all"
+                title="Clear conversation"
+              >
+                Clear
+              </button>
+            )}
+
+            {/* Admin link */}
+            <Link
+              href="/admin"
+              className="text-xs font-semibold text-violet-300 hover:text-white bg-violet-600/20 hover:bg-violet-600/40 border border-violet-500/30 px-3.5 py-1.5 rounded-xl transition-all shadow-sm flex items-center gap-1"
+            >
+              <span>Admin</span>
+              <span>&rarr;</span>
+            </Link>
+          </div>
         </div>
       </header>
 
-      {/* ── Chat Area ───────────────────────────── */}
-      <main ref={scrollRef} className="flex-1 overflow-y-auto">
+      {/* ── Chat Container ──────────────────────── */}
+      <main ref={scrollRef} className="flex-1 overflow-y-auto relative">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-          {/* Empty state */}
+          {/* Welcome Screen / Hero State */}
           {isEmpty && (
-            <div className="flex flex-col items-center justify-center h-[60vh] text-center animate-fade-in-up">
-              {/* Large icon */}
-              <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-violet-600/20 to-fuchsia-600/20 border border-violet-500/20 flex items-center justify-center mb-6">
-                <svg
-                  className="w-10 h-10 text-violet-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"
-                  />
-                </svg>
+            <div className="flex flex-col items-center justify-center min-h-[62vh] text-center animate-fade-in-up pt-4">
+              {/* Badge */}
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-gradient-to-r from-violet-500/15 via-fuchsia-500/15 to-pink-500/15 border border-violet-500/30 text-violet-300 text-xs font-semibold mb-6 shadow-sm">
+                <span>⚡ Sub-Second Semantic Search</span>
+                <span>&middot;</span>
+                <span>BAAI/bge-small Embeddings</span>
               </div>
-              <h3 className="text-white font-medium mb-1 tracking-wide">Welcome to ShopAssist!</h3>
-              <p className="text-gray-400 leading-relaxed text-sm">
-                Ask me anything about products — prices, ratings,
-                features, or just say <span className="text-violet-400">&quot;What are the best laptops?&quot;</span>
+
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-3 max-w-lg leading-tight">
+                What are you shopping for today?
+              </h2>
+
+              <p className="text-gray-400 text-sm max-w-md mx-auto leading-relaxed mb-8">
+                Ask complex questions using natural language. Picksy finds exact matches, compares prices, and provides AI-curated recommendations.
               </p>
 
-              {/* Suggestion chips */}
-              <div className="flex flex-wrap justify-center gap-2 max-w-lg mt-8">
-                {SUGGESTIONS.map((s) => (
+              {/* Suggestion Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl text-left mb-6">
+                {SUGGESTIONS.map((item, idx) => (
                   <button
-                    key={s}
-                    onClick={() => sendMessage(s)}
-                    className="px-4 py-2 text-sm rounded-full border border-white/[0.08] bg-white/[0.03] text-gray-300 hover:bg-violet-500/10 hover:border-violet-500/30 hover:text-violet-300 transition-all duration-200 cursor-pointer"
+                    key={idx}
+                    onClick={() => sendMessage(item.query)}
+                    className="p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.08] hover:border-violet-500/40 transition-all duration-200 group cursor-pointer text-left shadow-sm flex flex-col justify-between"
                   >
-                    {s}
+                    <span className="font-semibold text-sm text-gray-200 group-hover:text-violet-300 transition-colors">
+                      {item.label}
+                    </span>
+                    <span className="text-xs text-gray-500 mt-2 line-clamp-1">
+                      &ldquo;{item.query}&rdquo;
+                    </span>
                   </button>
                 ))}
+              </div>
+
+              {/* Feature Tags */}
+              <div className="flex items-center justify-center gap-4 text-[11px] text-gray-500 font-medium">
+                <span>✓ 999+ Catalog Items</span>
+                <span>&middot;</span>
+                <span>✓ MD5 Content Caching</span>
+                <span>&middot;</span>
+                <span>✓ Cosine Similarity</span>
               </div>
             </div>
           )}
@@ -323,41 +532,64 @@ export default function Home() {
             >
               {/* Avatar */}
               {msg.role === "assistant" ? (
-                <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-xs font-bold shadow-lg shadow-violet-500/20">
+                <div className="flex-shrink-0 w-9 h-9 rounded-2xl bg-gradient-to-tr from-violet-600 via-fuchsia-600 to-pink-500 flex items-center justify-center text-xs font-bold text-white shadow-lg shadow-violet-500/25 ring-1 ring-white/20">
                   AI
                 </div>
               ) : (
-                <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-white/[0.08] border border-white/[0.1] flex items-center justify-center text-xs font-bold text-gray-400">
-                  U
+                <div className="flex-shrink-0 w-9 h-9 rounded-2xl bg-white/[0.08] border border-white/[0.1] flex items-center justify-center text-xs font-bold text-gray-300">
+                  👤
                 </div>
               )}
 
-              {/* Bubble */}
+              {/* Message Content Container */}
               <div
                 className={`max-w-2xl ${
                   msg.role === "user"
-                    ? "bg-gradient-to-br from-violet-600/20 to-fuchsia-600/20 border border-violet-500/20 rounded-2xl rounded-tr-md px-4 py-3"
-                    : "space-y-4"
+                    ? "bg-gradient-to-br from-violet-600/30 to-fuchsia-600/30 border border-violet-500/30 rounded-2xl rounded-tr-md px-5 py-3.5 shadow-md"
+                    : "space-y-4 w-full"
                 }`}
               >
                 {msg.role === "user" ? (
-                  <p className="text-sm text-gray-100 leading-relaxed">
-                    {msg.content}
-                  </p>
+                  <div>
+                    <p className="text-sm text-gray-100 leading-relaxed font-medium">
+                      {msg.content}
+                    </p>
+                    <span className="text-[10px] text-violet-300/60 mt-1 block text-right">
+                      {msg.timestamp}
+                    </span>
+                  </div>
                 ) : (
                   <>
-                    <div className="bg-white/[0.04] border border-white/[0.06] rounded-2xl rounded-tl-md px-5 py-4">
-                      <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">
-                        {msg.content}
-                      </p>
+                    {/* Assistant Natural Language Box */}
+                    <div className="bg-[#12121c]/90 border border-white/[0.08] rounded-2xl rounded-tl-md px-5 py-4 shadow-lg">
+                      <div className="space-y-1">
+                        {formatMarkdownText(msg.content)}
+                      </div>
+                      <span className="text-[10px] text-gray-500 mt-2 block">
+                        Picksy AI &middot; {msg.timestamp}
+                      </span>
                     </div>
 
-                    {/* Product cards */}
+                    {/* Matched Product Cards Grid */}
                     {msg.products && msg.products.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {msg.products.map((p, i) => (
-                          <ProductCard key={i} product={p} />
-                        ))}
+                      <div>
+                        <div className="flex items-center justify-between mb-2 px-1">
+                          <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                            ⭐ Top Curated Matches ({msg.products.length})
+                          </span>
+                          <span className="text-[11px] text-violet-400/80 font-medium">
+                            Click card for details
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                          {msg.products.map((p, i) => (
+                            <ProductCard
+                              key={i}
+                              product={p}
+                              onSelect={(prod) => setSelectedProduct(prod)}
+                            />
+                          ))}
+                        </div>
                       </div>
                     )}
                   </>
@@ -366,33 +598,53 @@ export default function Home() {
             </div>
           ))}
 
-          {/* Loading state */}
+          {/* Loading Indicator */}
           {loading && <LoadingSkeleton />}
         </div>
       </main>
 
       {/* ── Input Bar ───────────────────────────── */}
-      <footer className="flex-shrink-0 border-t border-white/[0.06] bg-[#0a0a0f]/80 backdrop-blur-xl">
-        <form
-          onSubmit={handleSubmit}
-          className="max-w-4xl mx-auto px-4 sm:px-6 py-4"
-        >
-          <div className="flex items-center gap-3 bg-white/[0.04] border border-white/[0.08] rounded-2xl px-4 py-2 focus-within:border-violet-500/40 focus-within:bg-white/[0.06] transition-all duration-200">
+      <footer className="flex-shrink-0 border-t border-white/[0.08] bg-[#0c0c14]/90 backdrop-blur-2xl z-20">
+        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto px-4 sm:px-6 py-4">
+          {/* Quick Category / Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 no-scrollbar">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 flex-shrink-0 mr-1">
+              Filters:
+            </span>
+            {CATEGORY_CHIPS.map((chip, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  const newQuery = input ? `${input} ${chip}` : `Show me ${chip}`;
+                  sendMessage(newQuery);
+                }}
+                className="text-xs font-medium whitespace-nowrap px-3 py-1 rounded-full bg-white/[0.04] hover:bg-violet-500/20 border border-white/[0.08] hover:border-violet-500/30 text-gray-300 hover:text-violet-200 transition-all cursor-pointer flex-shrink-0"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+
+          {/* Main Input Box */}
+          <div className="flex items-center gap-3 bg-white/[0.04] border border-white/[0.1] focus-within:border-violet-500/50 focus-within:bg-white/[0.06] rounded-2xl px-4 py-2.5 transition-all shadow-inner">
+            <span className="text-gray-500 text-sm select-none">🔍</span>
             <input
               ref={inputRef}
               id="chat-input"
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about products..."
+              placeholder="Ask anything... (e.g., 'What are the best curtains under $30?')"
               disabled={loading}
-              className="flex-1 bg-transparent outline-none text-sm text-gray-100 placeholder:text-gray-600 disabled:opacity-50"
+              className="flex-1 bg-transparent outline-none text-sm text-gray-100 placeholder:text-gray-500 disabled:opacity-50"
             />
             <button
               id="send-button"
               type="submit"
               disabled={loading || !input.trim()}
-              className="flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white disabled:opacity-30 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-violet-500/25 active:scale-95 transition-all duration-200 cursor-pointer"
+              className="flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-tr from-violet-600 via-fuchsia-600 to-pink-500 flex items-center justify-center text-white disabled:opacity-25 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-violet-500/30 active:scale-95 transition-all cursor-pointer"
+              title="Send question"
             >
               <svg
                 className="w-4 h-4"
@@ -409,11 +661,19 @@ export default function Home() {
               </svg>
             </button>
           </div>
-          <p className="text-[10px] text-gray-600 text-center mt-2 tracking-wide">
-            Prices and availability may vary. Product information is synchronized in real-time from the store.
+
+          <p className="text-[10px] text-gray-500 text-center mt-2.5 tracking-wide">
+            Powered by Retrieval-Augmented Generation &middot; Real-time vector search over Walmart product catalog.
           </p>
         </form>
       </footer>
+
+      {/* ── Product Quick View Modal ────────────── */}
+      <ProductModal
+        product={selectedProduct}
+        onClose={() => setSelectedProduct(null)}
+      />
     </div>
   );
 }
+

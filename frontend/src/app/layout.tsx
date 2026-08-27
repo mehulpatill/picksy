@@ -8,9 +8,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "ShopAssist AI — Product Assistant",
+  title: "Picksy — Enterprise RAG Shopping Assistant",
   description:
-    "AI-powered product assistant that helps you find the best products using RAG-based retrieval and Gemini AI.",
+    "Production-grade semantic product search assistant powered by FastEmbed, Google Gemini 2.5 Flash, and Supabase pgvector.",
 };
 
 export default function RootLayout({
